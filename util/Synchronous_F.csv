@@ -1,0 +1,16 @@
+"PROTOCOL";"Protocol Name";"SET";4;;;;
+;;;;;;;
+"ROLE";"A";;;;;;
+"STATES";;"A0A";"A1A";"A2A";"A3A";"A4A";"A5A"
+"OUT";"msg0";",A1A";;;;",A5A";
+"OUT";"msg1";;;",A3A";;",A5A";
+"IN";"ack0";;",A2A";;;;
+"IN";"ack1";;;;",A4A";;
+;;;;;;;
+;;;;;;;
+"ROLE";"B";;;;;;
+"STATES";;"B0B";"B1B";"B2B";"B3B";"B4B";"B5B"
+"IN";"msg0";",B1B";;;;",B5B";
+"IN";"msg1";;;",B3B";;",Invalid";
+"OUT";"ack0";;",B2B";;;;
+"OUT";"ack1";;;;",B4B";;

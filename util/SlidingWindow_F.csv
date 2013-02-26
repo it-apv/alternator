@@ -1,0 +1,19 @@
+"PROTOCOL";"Protocol Name";"SET";4;;;;;;;
+;;;;;;;;;;
+"ROLE";"SENDER";;;;;;;;;
+"STATES";;"Init";"SWF01S";"SWF1S";"SWF12S";"SWF2S";"SWF20S";"SWF0S";;
+"OUT";"msg0";",SWF01S";",SWF01S";;;;",SWF20S";",SWF0S";;
+"OUT";"msg1";;",SWF01S";",SWF1S";",SWF12S";;;;;
+"OUT";"msg2";;;;",SWF12S";",SWF2S";",SWF20S";;;
+"IN";"ack0";;",SWF12S";;;;",SWF2S";",SWF20S";;
+"IN";"ack1";;",SWF0S";",SWF01S";",SWF20S";;;;;
+"IN";"ack2";;;;",SWF1S";",SWF12S";",SWF01S";;;
+;;;;;;;;;;
+"ROLE";"RECEIVER";;;;;;;;;
+"STATES";;"Init";"RINITWF12R";"RINITWF0R";"RWF01R";"RWF1R";"RWF12R";"RWF2R";"RWF20R";"RWF0R"
+"IN";"msg0";",RINITWF12R";;",RWF20R";",RWF12R";",Invalid";",Invalid";",Invalid";",RWF2R";",RWF20R"
+"IN";"msg1";",RINITWF0R";",RWF20R";;",RWF0R";",RWF01R";",RWF20R";",Invalid";;",Invalid"
+"IN";"msg2";;;;",Invalid";",Invalid";",RWF1R";",RWF12R";",RWF01R";",Invalid"
+"OUT";"ack0";;",RINITWF12R";;;;",RWF12R";",RWF2R";",RWF20R";
+"OUT";"ack1";;;",RINITWF0R";",RWF01R";;;;",RWF20R";",RWF0R"
+"OUT";"ack2";;;;",RWF01R";",RWF1R";",RWF12R";;;

@@ -1,0 +1,14 @@
+<protocol name="Protocol Name" medium="SET" capacity="4">
+  <messages>
+     <message type="unordered">Msg1</message>
+     <message>Msg2</message>
+     <message type="unordered">Msg3</message>
+     <message>Msg4</message>
+     <message>MsgX</message>
+  </messages>
+
+  <role name="RoleNameA">
+    <states>
+      <state type="initial">State1</state>
+      <state>State2</state>
+      <state type="final">State3</state>

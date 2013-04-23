@@ -64,4 +64,7 @@ class Engine(object):
         return self.cs.export_counter_example(prefix)
     
     def get_smt_time(self):
-        return self.cs.smt_time
+        return self.cs.solver.smt_time
+    
+    def get_constraint_generation_time(self):
+        return self.cs.constraint_generation_time

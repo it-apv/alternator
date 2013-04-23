@@ -8,6 +8,7 @@ import time
 
 class ConstraintSolver(object):
     
+    num_asserts = 0
     def __init__(self, automata_dict, settings_dict):
         # We now have the original CPs in a dictionary automata_dict
         # where keys are role names and values are the individual CPs.
@@ -18,15 +19,14 @@ class ConstraintSolver(object):
         
         bound = settings['bound']
         settings['bad_state'] = settings['role'] + '_' + settings['bad'] + '_R_' + str(bound)
-        self.smt_query = self.constraint_gen.generate(settings)
-        print str(self.smt_query.count('assert')) + ' assertions checked'
-        self.solver = Solver(settings['solver'])
-        self.solver.add_statement(self.smt_query)
+        start = time.time()
+        # TODO: The query is passed along in the settings dict. Make explicit.
+        self.constraint_gen.generate(settings)
+        self.constraint_generation_time = time.time() - start
+        self.solver = Solver(settings)
         
     def has_solution(self):
-        start = time.time()
         ans = self.solver.is_satisfiable()
-        self.smt_time = time.time() - start
         return ans
     
     def export_counter_example(self, prefix):
@@ -37,25 +37,52 @@ class ConstraintSolver(object):
 
 class Solver(object):
     
-    def __init__(self, smt_command):
-        self.smt_command = smt_command
-        self.query = ''
-        self.proc=subprocess.Popen([self.smt_command, '-'], shell=True, 
-                                   stdin=subprocess.PIPE,
-                                   stdout=subprocess.PIPE)
+    def __init__(self, settings):
+        self.query_type = settings['query']
+        if self.query_type == 'list':
+            self.smt_command = settings['solver']
+        elif self.query_type == 'file':
+            self.tmp_file = settings['tmp_file']
+            self.smt_command = settings['solver_from_file'] + ' ' + settings['tmp_file'] 
+        elif self.query_type == 'simplest':
+            self.smt_command = settings['solver']
+        else:
+            raise ValueError('Unknown query_type: ' + self.query_type)
+        self.query = settings['_query']
         self.model = None
-#        self.add_statement('(set-option :print-success true)')
 
     def add_statement(self, smt_query):
         self.query += smt_query
-        
+    
+    def get_query(self):
+        return str(self.query)
+    
+    def finalize_query(self):
+        if self.query_type == 'list' or self.query_type == 'simplest':
+            self.proc=subprocess.Popen([self.smt_command, '-'], shell=True, 
+                                       stdin=subprocess.PIPE,
+                                       stdout=subprocess.PIPE)
+            start = time.time()
+            res = self.proc.communicate(self.get_query())
+            self.smt_time = time.time() - start
+            return res
+        elif self.query_type == 'file':
+            self.query.finalize()
+            start = time.time()
+            self.proc=subprocess.Popen(self.smt_command,
+                                       shell=True, 
+                                       stdout=subprocess.PIPE)
+            res = self.proc.communicate()
+            self.smt_time = time.time() - start
+            return res
+        else: raise ValueError()
     
     def is_satisfiable(self):
         self.add_statement('(check-sat)')
         self.add_statement('(get-model)')
-        self.answer, _ = self.proc.communicate(self.query)
+        self.answer, _ = self.finalize_query() 
         if self.answer.split('\n')[0].strip() == "sat":
-            self.model = parse_model(self.answer)
+            #self.model = parse_model(self.answer)
             return True
         elif self.answer.split('\n')[0].strip() == "unsat":
             return False
@@ -97,19 +124,40 @@ class ConstraintGenerator(object):
     
     def generate(self, settings):
         
+        query_type = settings['query']
+        if query_type == 'list':
+            query = ListQuery()
+        elif query_type == 'file':
+            tmp_file = settings['tmp_file']
+            query = FileQuery(tmp_file)
+        elif query_type == 'simplest':
+            query = StringQuery()
+        else:
+            raise ValueError('Unknown query_type: ' + self.query_type)
+
+        settings['_query'] = query
         bound = settings['bound']
         
-        query = ''
         total_number_of_states = sum([len(a.get_states()) for a in self.automata.values()])
-        
+        print 'total # states: ' + str(total_number_of_states)
+        start = time.time()
+        print 'Generating bounded automata'
         for role in self.automata.keys():
             
             alt_aut = self.automata[role].get_k_alternating(bound, self.semantics,
                                                             total_number=total_number_of_states)
             self.bounded_automata[role] = alt_aut 
         
-        # Now build Parikh Image for each graph
+        self.b_total_number_of_states = sum([len(a.get_states()) for a in self.bounded_automata.values()])
+        print 'total # states: ' + str(self.b_total_number_of_states)
+        self.b_total_number_of_trans = sum([len(a.get_transitions()) for a in self.bounded_automata.values()])
+        print 'total # transitions: ' + str(self.b_total_number_of_trans)
         
+        lap = time.time() - start
+        print 'Automata generation took ' + str(lap) + ' seconds'
+        print 'Building P.I. for each automaton'
+        start = time.time()
+        # Now build Parikh Image for each graph
         for role in self.bounded_automata.keys():
             
             automaton = self.bounded_automata[role]
@@ -145,7 +193,12 @@ class ConstraintGenerator(object):
             
             # Ensure that any atomic send and receive are taken as meant to
             query += enforce_atomic_combined_send_receive(automaton.automaton)
-                
+        # end generate P.I.
+        lap = time.time() - start
+        print 'P.I. generation took ' + str(lap) + ' seconds'
+        print 'Generating channel semantics constraints'
+        start = time.time()
+        
         if self.semantics == 'multiset':
             # Make sure the total number of messages sent in previous phases is less than or equal
             # to the number of messages consumed in all phases up to this one
@@ -171,8 +224,80 @@ class ConstraintGenerator(object):
             query += enforce_weak_message_ordering_per_channel([self.bounded_automata[role] for role in 
                                                                 self.bounded_automata.keys()])
         
+        lap = time.time() - start
+        print 'Channel semantics constraint generation took ' + str(lap) + ' seconds'
         return query
 
+class Query(object):
+    '''
+    Class that represents a query
+    '''
+    def __init__(self):
+        pass
+    
+    def __add__(self, clause):
+        raise NotImplementedError("Should have implemented this")
+
+    def __iadd__(self, clause):
+        raise NotImplementedError("Should have implemented this")
+
+
+class StringQuery(Query):
+    '''
+    Class that represents the query as a string.
+    '''
+    def __init__(self):
+        self.query = ''
+        
+    def __add__(self, arg):
+        self.query += arg
+    
+    def __iadd__(self, arg):
+        self.query += arg
+        return self
+    
+    def __repr__(self):
+        return self.query
+
+class ListQuery(Query):
+    '''
+    Class that represents the query as a list of strings, and only concatenates if asked to.
+    '''
+    def __init__(self):
+        self.query = []
+
+    def __add__(self, clause):
+        print 'add'
+        self.query.append(clause)
+        
+    def __iadd__(self, clause):
+        if isinstance(clause, self.__class__):
+            self.query.extend(clause.query)
+        else:
+            self.query.append(clause)
+        return self
+    
+    def count(self, word):
+        sum([s.count('assert') for s in self.query])
+    
+    def __repr__(self):
+        return ''.join(self.query)
+
+class FileQuery(Query):
+    '''
+    Class that represents the query in a file.
+    '''
+    def __init__(self, tmp_file):
+        self.tmp_file = tmp_file
+        self.query = open(self.tmp_file, 'w')
+
+    def __iadd__(self, clause):
+        self.query.write(clause)
+        return self
+    
+    def finalize(self):
+        self.query.close()
+    
 def generate_var_declarations(aut, semantics):
     # Declare all variables
     # Also assert that each variable is greater than zero
@@ -467,6 +592,7 @@ def build_statement(cond, arg1, arg2):
     return '(' + cond + ' ' + arg1 + ' ' + ' ' + arg2 + ' )'
 
 def build_assertion(statement):
+    ConstraintSolver.num_asserts += 1
     return '(assert ' + statement + ' ) \n'
 
 def build_implication(antecedent, consequent):
